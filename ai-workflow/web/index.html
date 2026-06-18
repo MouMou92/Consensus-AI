@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Consensus IA</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <main class="app-shell">
+    <header class="app-header">
+      <div>
+        <p class="eyebrow">Audit multi-IA en boucle</p>
+        <h1>Consensus IA</h1>
+      </div>
+      <div class="header-status">
+        <span id="projectStatus">Projet non scanne</span>
+        <span id="loopStatus" class="loop-pill">Idle</span>
+      </div>
+    </header>
+
+    <section class="setup-grid" aria-label="Configuration">
+      <section class="setup-panel project-panel">
+        <div class="panel-head">
+          <div>
+            <p class="eyebrow">Projet</p>
+            <h2>Dossier a auditer</h2>
+          </div>
+          <button id="browseBtn" type="button">Parcourir</button>
+        </div>
+        <div class="path-row">
+          <input id="projectPath" type="text" autocomplete="off" aria-label="Dossier projet">
+        </div>
+        <input id="branchName" type="hidden" autocomplete="off">
+      </section>
+
+      <section class="setup-panel agents-panel">
+        <div class="panel-head">
+          <div>
+            <p class="eyebrow">Agents</p>
+            <h2>IA disponibles</h2>
+          </div>
+          <div class="agents-head-actions">
+            <button id="openOnboardingBtn" type="button">Connecter les IA</button>
+            <span class="read-only-pill">Lecture seule</span>
+          </div>
+        </div>
+        <div id="agentCards" class="agent-cards"></div>
+      </section>
+    </section>
+
+    <section class="brief-panel" aria-label="Consigne audit">
+      <div class="panel-head">
+        <div>
+          <p class="eyebrow">Mode</p>
+          <h2 id="briefTitle">Ce que les IA doivent verifier</h2>
+        </div>
+        <div class="mode-switch" role="tablist">
+          <button type="button" id="modeAuditBtn" class="mode-btn active" data-mode="audit">Audit projet</button>
+          <button type="button" id="modeChatBtn" class="mode-btn" data-mode="chat">Chat (idee)</button>
+        </div>
+      </div>
+      <textarea id="instructionBox" spellcheck="true" placeholder="Exemple : auditer la qualite generale du code, les risques de securite, la maintenabilite, les tests manquants et les ameliorations prioritaires."></textarea>
+      <div class="audit-actions">
+        <button type="button" class="primary" id="startLoopBtn">Lancer la boucle</button>
+        <button data-action="stop-loop" type="button" class="danger" id="stopLoopBtn">Stopper la boucle</button>
+        <span id="loopHint" class="loop-hint"></span>
+      </div>
+    </section>
+
+    <section class="iterations-panel" aria-label="Iterations">
+      <div class="panel-head">
+        <div>
+          <p class="eyebrow">Boucle</p>
+          <h2>Tours d'echange entre IA</h2>
+        </div>
+        <span id="roundCounter" class="round-counter">Tour --/--</span>
+      </div>
+      <div id="roundsList" class="rounds-list"></div>
+    </section>
+
+    <section class="results-grid" aria-label="Resultats IA">
+      <article class="result-card" data-result="claude">
+        <div class="result-head">
+          <div>
+            <p class="eyebrow">Claude</p>
+            <h2>Architecture et qualite</h2>
+          </div>
+          <span class="result-status" data-result-status="claude"></span>
+        </div>
+        <pre id="claudeResult"></pre>
+      </article>
+
+      <article class="result-card" data-result="codex">
+        <div class="result-head">
+          <div>
+            <p class="eyebrow">Codex</p>
+            <h2>Qualite developpeur</h2>
+          </div>
+          <span class="result-status" data-result-status="codex"></span>
+        </div>
+        <pre id="codexResult"></pre>
+      </article>
+
+      <article class="result-card" data-result="gemini">
+        <div class="result-head">
+          <div>
+            <p class="eyebrow">Gemini</p>
+            <h2>Securite et UX</h2>
+          </div>
+          <span class="result-status" data-result-status="gemini"></span>
+        </div>
+        <pre id="geminiResult"></pre>
+      </article>
+
+      <article class="result-card" data-result="mistral">
+        <div class="result-head">
+          <div>
+            <p class="eyebrow">Mistral</p>
+            <h2>Vue d'ensemble</h2>
+          </div>
+          <span class="result-status" data-result-status="mistral"></span>
+        </div>
+        <pre id="mistralResult"></pre>
+      </article>
+
+      <article class="result-card consensus-card full-row" data-result="consensus">
+        <div class="result-head">
+          <div>
+            <p class="eyebrow">Synthese</p>
+            <h2>Consensus final</h2>
+          </div>
+          <div class="consensus-actions">
+            <button id="copyConsensusBtn" type="button">Copier pour Claude Cowork</button>
+            <span id="copyConsensusFeedback" class="copy-feedback"></span>
+          </div>
+        </div>
+        <pre id="consensusResult"></pre>
+      </article>
+    </section>
+
+    <section class="console-panel" aria-label="Console">
+      <div class="console-head">
+        <h2>Journal</h2>
+        <span id="saveState">Pret</span>
+      </div>
+      <pre id="consoleOut"></pre>
+    </section>
+  </main>
+
+  <dialog id="onboardingDialog" class="onboarding-dialog">
+    <div class="onboarding-head">
+      <div>
+        <p class="eyebrow">Premiers pas</p>
+        <h2>Connecter les IA</h2>
+      </div>
+      <button id="closeOnboardingBtn" type="button">Fermer</button>
+    </div>
+    <p class="onboarding-intro">
+      Consensus IA fait dialoguer plusieurs IA en local. Connecte-en au moins
+      <strong>2</strong> pour lancer une boucle. Chaque CLI utilise <strong>ton</strong>
+      compte&nbsp;: tes identifiants restent sur ta machine, rien n'est envoye a un serveur tiers.
+    </p>
+    <div id="onboardingCards" class="onboarding-cards"></div>
+    <div class="onboarding-foot">
+      <span id="onboardingSummary" class="onboarding-summary"></span>
+      <div class="onboarding-foot-actions">
+        <button id="recheckAllBtn" type="button">Tout verifier</button>
+        <button id="finishOnboardingBtn" type="button" class="primary" disabled>Continuer</button>
+      </div>
+    </div>
+  </dialog>
+
+  <dialog id="folderDialog" class="folder-dialog">
+    <div class="folder-head">
+      <div>
+        <p class="eyebrow">Parcourir</p>
+        <h2>Choisir un dossier</h2>
+      </div>
+      <button id="closeFolderBtn" type="button">Fermer</button>
+    </div>
+    <div class="folder-path">
+      <button id="folderUpBtn" type="button">Parent</button>
+      <input id="folderPath" type="text" autocomplete="off" aria-label="Chemin courant">
+      <button id="folderGoBtn" type="button">Aller</button>
+    </div>
+    <div id="folderList" class="folder-list"></div>
+    <div class="folder-actions">
+      <button id="selectFolderBtn" type="button" class="primary">Utiliser ce dossier</button>
+    </div>
+  </dialog>
+
+  <script src="/app.js"></script>
+</body>
+</html>

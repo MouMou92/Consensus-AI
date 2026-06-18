@@ -1,0 +1,67 @@
+{
+  "targetProjectPath": "",
+  "branchName": "ai/project-loop",
+  "lastScanAt": null,
+  "writePolicy": "read-only",
+  "maxRounds": 5,
+  "minAgents": 2,
+  "mistralSynthesisOnly": true,
+  "agents": {
+    "claude": {
+      "label": "Claude Code",
+      "role": "Architecture et qualite globale",
+      "type": "cli-headless",
+      "command": "claude",
+      "args": [
+        "-p"
+      ],
+      "stdinMode": true,
+      "timeoutMs": 300000,
+      "enabled": true
+    },
+    "codex": {
+      "label": "Codex",
+      "role": "Qualite developpeur et maintenabilite",
+      "type": "cli-headless",
+      "command": "codex",
+      "args": [
+        "exec",
+        "--skip-git-repo-check"
+      ],
+      "stdinMode": true,
+      "timeoutMs": 120000,
+      "enabled": true
+    },
+    "gemini": {
+      "label": "Gemini CLI",
+      "role": "Audit securite, performance et UX",
+      "type": "cli-headless",
+      "command": "gemini",
+      "args": [
+        "--skip-trust",
+        "-y",
+        "-p",
+        "Suis l'integralite des instructions ci-dessus et reponds en francais."
+      ],
+      "stdinMode": true,
+      "timeoutMs": 300000,
+      "enabled": true
+    },
+    "mistral": {
+      "label": "Mistral",
+      "role": "Avis complementaire et synthese finale (API)",
+      "type": "api",
+      "provider": "mistral",
+      "model": "mistral-small-latest",
+      "endpoint": "https://api.mistral.ai/v1/chat/completions",
+      "timeoutMs": 120000,
+      "enabled": true
+    }
+  },
+  "scan": {
+    "maxFiles": 500,
+    "maxContentFiles": 60,
+    "maxFileBytes": 12000,
+    "maxTotalBytes": 180000
+  }
+}

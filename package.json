@@ -1,0 +1,13 @@
+{
+  "name": "consensus-ia",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Cockpit local qui fait dialoguer plusieurs IA (Claude Code, Codex, Gemini CLI, Mistral) en boucle sur un projet ou une idee, jusqu'a consensus.",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "start": "node ai-workflow/web/server.js"
+  }
+}

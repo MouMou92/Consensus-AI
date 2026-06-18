@@ -1,0 +1,35 @@
+# Cles API (locales seulement)
+ai-workflow/.env
+
+# Config locale propre a chaque utilisateur (chemins, reglages).
+# Modele neutre fourni : ai-workflow/config.example.json
+ai-workflow/config.json
+
+# Sauvegardes horodatees creees lors des modifications
+*.bak-*
+*.bak
+
+# Question / sortie propres a chaque run
+ai-workflow/00-user-instructions.md
+ai-workflow/04-decisions-finales.md
+ai-workflow/05-todo.md
+
+# Outputs generes par la boucle multi-IA
+ai-workflow/iterations/
+ai-workflow/prompts-generated/
+ai-workflow/iterations-state.json
+ai-workflow/99-active-agent-prompt.md
+ai-workflow/chat-sandbox/
+
+# Outputs generes par les agents (peuvent etre regeneres)
+ai-workflow/00-project-scan.md
+
+# Node / build
+node_modules/
+dist/
+build/
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
