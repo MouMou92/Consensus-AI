@@ -23,6 +23,7 @@ const modeAuditBtn = document.getElementById("modeAuditBtn");
 const modeChatBtn = document.getElementById("modeChatBtn");
 const briefTitle = document.getElementById("briefTitle");
 const maxRoundsInput = document.getElementById("maxRoundsInput");
+const consensusAgentSelect = document.getElementById("consensusAgentSelect");
 
 let currentMode = "audit";
 
@@ -65,20 +66,43 @@ if (maxRoundsInput) {
   });
 }
 
-const resultEls = {
-  claude: document.getElementById("claudeResult"),
-  codex: document.getElementById("codexResult"),
-  gemini: document.getElementById("geminiResult"),
-  mistral: document.getElementById("mistralResult"),
-  consensus: document.getElementById("consensusResult")
+if (consensusAgentSelect) {
+  consensusAgentSelect.addEventListener("change", async () => {
+    try {
+      await saveSettings();
+      consensusAgentSelect.value = (state && state.config && state.config.consensusAgent) || "auto";
+      setSaveState("Synthese par : " + consensusAgentSelect.value);
+    } catch (e) {
+      showError(e);
+    }
+  });
+}
+
+const SEAT_META = {
+  claude: { name: "Claude", role: "Architecture & qualite" },
+  codex: { name: "Codex", role: "Qualite developpeur" },
+  gemini: { name: "Gemini", role: "Securite & UX" },
+  mistral: { name: "Mistral", role: "Vue d'ensemble" }
 };
 
-const resultStatusEls = {
-  claude: document.querySelector('[data-result-status="claude"]'),
-  codex: document.querySelector('[data-result-status="codex"]'),
-  gemini: document.querySelector('[data-result-status="gemini"]'),
-  mistral: document.querySelector('[data-result-status="mistral"]')
+// Logos des IA (rendus simplifies aux couleurs de marque) reutilises dans les cartes.
+const AGENT_LOGOS = {
+  claude: '<svg viewBox="0 0 24 24" aria-hidden="true"><g fill="#d97757"><rect x="11" y="2" width="2" height="20" rx="1"/><rect x="11" y="2" width="2" height="20" rx="1" transform="rotate(60 12 12)"/><rect x="11" y="2" width="2" height="20" rx="1" transform="rotate(120 12 12)"/></g></svg>',
+  codex: '<svg viewBox="0 0 24 24" aria-hidden="true"><g fill="none" stroke="#e6ebf2" stroke-width="1.6"><ellipse cx="12" cy="8.4" rx="3" ry="5.4"/><ellipse cx="12" cy="8.4" rx="3" ry="5.4" transform="rotate(60 12 12)"/><ellipse cx="12" cy="8.4" rx="3" ry="5.4" transform="rotate(120 12 12)"/><ellipse cx="12" cy="8.4" rx="3" ry="5.4" transform="rotate(180 12 12)"/><ellipse cx="12" cy="8.4" rx="3" ry="5.4" transform="rotate(240 12 12)"/><ellipse cx="12" cy="8.4" rx="3" ry="5.4" transform="rotate(300 12 12)"/></g></svg>',
+  gemini: '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="#4285f4" d="M12 2c.5 5 4.9 9.4 10 10-5.1.6-9.5 5-10 10-.5-5-4.9-9.4-10-10C7.1 11.4 11.5 7 12 2Z"/></svg>',
+  mistral: '<svg viewBox="0 0 24 24" aria-hidden="true"><g><rect x="3" y="4.5" width="5" height="5" fill="#ffd233"/><rect x="9.5" y="4.5" width="5" height="5" fill="#ffd233"/><rect x="16" y="4.5" width="5" height="5" fill="#ffd233"/><rect x="3" y="10.5" width="5" height="5" fill="#ff8205"/><rect x="9.5" y="10.5" width="5" height="5" fill="#ff8205"/><rect x="16" y="10.5" width="5" height="5" fill="#ff8205"/><rect x="3" y="16.5" width="5" height="5" fill="#fa3a0f"/><rect x="9.5" y="16.5" width="5" height="5" fill="#fa3a0f"/><rect x="16" y="16.5" width="5" height="5" fill="#fa3a0f"/></g></svg>'
 };
+function agentLogoSvg(id) { return AGENT_LOGOS[id] || ""; }
+// Dernier avis complet par IA (+ consensus) pour le dialog au clic.
+let latestOpinions = { claude: null, codex: null, gemini: null, mistral: null, consensus: null };
+
+const centerRoundEl = document.getElementById("centerRound");
+const centerStateEl = document.getElementById("centerState");
+const viewConsensusBtn = document.getElementById("viewConsensusBtn");
+const seatDialog = document.getElementById("seatDialog");
+const seatDialogTitle = document.getElementById("seatDialogTitle");
+const seatDialogEyebrow = document.getElementById("seatDialogEyebrow");
+const seatDialogBody = document.getElementById("seatDialogBody");
 
 function setConsole(text) {
   consoleOut.textContent = text || "";
@@ -110,23 +134,71 @@ function findLastAgentFile(agentId) {
   return null;
 }
 
-function renderResults() {
-  for (const agentId of ["claude", "codex", "gemini", "mistral"]) {
-    const el = resultEls[agentId];
-    const statusEl = resultStatusEls[agentId];
-    const last = findLastAgentFile(agentId);
+function bubbleExcerpt(content) {
+  if (!content) return "En attente…";
+  const text = String(content)
+    .replace(/^\[Tour[^\]]*\][^\n]*\n?/i, "")   // retire la 1re ligne "[Tour x] STATUT"
+    .replace(/^#+\s.*$/gm, " ")                  // titres markdown
+    .replace(/[*_`>#]/g, " ")                    // ponctuation markdown
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!text) return "…";
+  return text.length > 160 ? text.slice(0, 160).trimEnd() + "…" : text;
+}
+
+function openSeatDialog(entry) {
+  if (!seatDialog || !entry) return;
+  if (seatDialogTitle) seatDialogTitle.textContent = entry.title || "Avis";
+  if (seatDialogEyebrow) seatDialogEyebrow.textContent = entry.eyebrow || "Avis";
+  if (seatDialogBody) seatDialogBody.textContent = entry.body || "(vide)";
+  if (!seatDialog.open) seatDialog.showModal();
+}
+
+function renderTable() {
+  for (const id of ["claude", "codex", "gemini", "mistral"]) {
+    const seat = document.querySelector(`.seat[data-seat="${id}"]`);
+    const bubble = document.querySelector(`[data-seat-bubble="${id}"]`);
+    const statusEl = document.querySelector(`[data-seat-status="${id}"]`);
+    const meta = SEAT_META[id] || { name: id, role: "" };
+    const last = findLastAgentFile(id);
     if (last) {
-      el.textContent = `[Tour ${last.roundIndex}] ${last.status}\n\n${last.content}`;
-      statusEl.textContent = `Tour ${last.roundIndex} - ${last.status}`;
-      statusEl.dataset.status = last.status;
+      latestOpinions[id] = {
+        title: `${meta.name} — ${meta.role}`,
+        eyebrow: `Tour ${last.roundIndex} · ${last.status}`,
+        body: `[Tour ${last.roundIndex}] ${last.status}\n\n${last.content}`
+      };
+      if (bubble) bubble.textContent = bubbleExcerpt(last.content);
+      if (statusEl) statusEl.textContent = `Tour ${last.roundIndex} · ${last.status}`;
+      if (seat) seat.dataset.status = last.status;
     } else {
-      el.textContent = placeholderText();
-      statusEl.textContent = "";
-      statusEl.dataset.status = "";
+      latestOpinions[id] = null;
+      if (bubble) bubble.textContent = "En attente…";
+      if (statusEl) statusEl.textContent = "";
+      if (seat) seat.dataset.status = "idle";
     }
   }
+
+  const it = state && state.iterations ? state.iterations : null;
+  const maxRounds = (it && it.maxRounds) || (state && state.config && state.config.maxRounds) || 5;
+  if (centerRoundEl) {
+    const cur = it && typeof it.currentRound === "number" ? it.currentRound : -1;
+    centerRoundEl.textContent = cur >= 0 ? `Tour ${cur + 1} / ${maxRounds}` : `Tour --/${maxRounds}`;
+  }
+  if (centerStateEl) {
+    let label = "En attente";
+    let st = "idle";
+    if (it && it.running) { label = "Débat en cours…"; st = "running"; }
+    else if (it && it.finished) { label = it.error ? "Interrompu" : "Consensus prêt"; st = it.error ? "error" : "done"; }
+    centerStateEl.textContent = label;
+    centerStateEl.dataset.state = st;
+  }
+
   const consensus = state && state.files ? state.files["ai-workflow/04-decisions-finales.md"] : "";
-  resultEls.consensus.textContent = consensus && consensus.trim() ? consensus : placeholderText();
+  const hasConsensus = Boolean(consensus && consensus.trim());
+  latestOpinions.consensus = hasConsensus
+    ? { title: "Consensus final", eyebrow: "Synthèse", body: consensus.replace(/^<!--[\s\S]*?-->\n?/, "").trim() }
+    : null;
+  if (viewConsensusBtn) viewConsensusBtn.disabled = !hasConsensus;
 }
 
 function renderAgents() {
@@ -143,7 +215,12 @@ function renderAgents() {
     const title = document.createElement("div");
     title.className = "agent-title";
     const name = document.createElement("strong");
-    name.textContent = agent.label || id;
+    const nameLogo = document.createElement("span");
+    nameLogo.className = "agent-logo";
+    nameLogo.innerHTML = agentLogoSvg(id);
+    const nameText = document.createElement("span");
+    nameText.textContent = agent.label || id;
+    name.append(nameLogo, nameText);
     const badge = document.createElement("span");
     const ready = tool && tool.ok;
     badge.className = ready ? "ok" : "missing";
@@ -303,6 +380,9 @@ function renderState() {
   if (maxRoundsInput && document.activeElement !== maxRoundsInput) {
     maxRoundsInput.value = state.config.maxRounds || 5;
   }
+  if (consensusAgentSelect && document.activeElement !== consensusAgentSelect) {
+    consensusAgentSelect.value = state.config.consensusAgent || "auto";
+  }
   if (document.activeElement !== instructionBox) {
     instructionBox.value = state.userInstructions || "";
   }
@@ -311,7 +391,7 @@ function renderState() {
     : "Projet non scanne";
   renderAgents();
   renderIterations();
-  renderResults();
+  renderTable();
 }
 
 async function refresh({ quiet = false } = {}) {
@@ -336,7 +416,8 @@ async function saveSettings() {
       targetProjectPath: projectPath.value,
       branchName: branchName.value,
       userInstructions: instructionBox.value,
-      maxRounds: maxRoundsInput ? Number(maxRoundsInput.value) : undefined
+      maxRounds: maxRoundsInput ? Number(maxRoundsInput.value) : undefined,
+      consensusAgent: consensusAgentSelect ? consensusAgentSelect.value : undefined
     })
   });
   const result = await response.json();
@@ -545,7 +626,12 @@ function buildOnboardingCard(id) {
   const head = document.createElement("div");
   head.className = "ob-card-head";
   const name = document.createElement("strong");
-  name.textContent = agent ? (agent.label || id) : id;
+  const nameLogo = document.createElement("span");
+  nameLogo.className = "agent-logo";
+  nameLogo.innerHTML = agentLogoSvg(id);
+  const nameText = document.createElement("span");
+  nameText.textContent = agent ? (agent.label || id) : id;
+  name.append(nameLogo, nameText);
   const badge = document.createElement("span");
   badge.className = `state-pill ${pill.cls}`;
   badge.textContent = pill.label;
@@ -715,6 +801,41 @@ if (finishOnboardingBtn) {
 }
 onClick("closeOnboardingBtn", () => { if (onboardingDialog) onboardingDialog.close(); });
 onClick("openOnboardingBtn", () => openOnboarding());
+
+// Panneau Agents repliable (reduit par defaut pour mettre la table en avant)
+const agentsPanel = document.getElementById("agentsPanel");
+const toggleAgentsBtn = document.getElementById("toggleAgentsBtn");
+if (toggleAgentsBtn && agentsPanel) {
+  toggleAgentsBtn.addEventListener("click", () => {
+    const collapsed = agentsPanel.classList.toggle("collapsed");
+    toggleAgentsBtn.textContent = collapsed ? "Afficher" : "Masquer";
+    toggleAgentsBtn.setAttribute("aria-expanded", collapsed ? "false" : "true");
+  });
+}
+
+// Table ronde : clic sur un siege -> avis complet ; centre -> consensus
+document.querySelectorAll(".seat").forEach(seatBtn => {
+  seatBtn.addEventListener("click", () => {
+    const id = seatBtn.dataset.seat;
+    const entry = latestOpinions[id];
+    if (entry) {
+      openSeatDialog(entry);
+    } else {
+      const meta = SEAT_META[id] || { name: id };
+      openSeatDialog({
+        title: meta.name,
+        eyebrow: "Avis",
+        body: "Cette IA n'a pas encore donne d'avis dans cette boucle."
+      });
+    }
+  });
+});
+if (viewConsensusBtn) {
+  viewConsensusBtn.addEventListener("click", () => {
+    if (latestOpinions.consensus) openSeatDialog(latestOpinions.consensus);
+  });
+}
+onClick("closeSeatBtn", () => { if (seatDialog) seatDialog.close(); });
 
 setMode("audit");
 refresh().then(() => maybeAutoOpenOnboarding()).catch(showError);

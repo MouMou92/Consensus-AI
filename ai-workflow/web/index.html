@@ -19,36 +19,6 @@
       </div>
     </header>
 
-    <section class="setup-grid" aria-label="Configuration">
-      <section class="setup-panel project-panel">
-        <div class="panel-head">
-          <div>
-            <p class="eyebrow">Projet</p>
-            <h2>Dossier a auditer</h2>
-          </div>
-          <button id="browseBtn" type="button">Parcourir</button>
-        </div>
-        <div class="path-row">
-          <input id="projectPath" type="text" autocomplete="off" aria-label="Dossier projet">
-        </div>
-        <input id="branchName" type="hidden" autocomplete="off">
-      </section>
-
-      <section class="setup-panel agents-panel">
-        <div class="panel-head">
-          <div>
-            <p class="eyebrow">Agents</p>
-            <h2>IA disponibles</h2>
-          </div>
-          <div class="agents-head-actions">
-            <button id="openOnboardingBtn" type="button">Connecter les IA</button>
-            <span class="read-only-pill">Lecture seule</span>
-          </div>
-        </div>
-        <div id="agentCards" class="agent-cards"></div>
-      </section>
-    </section>
-
     <section class="brief-panel" aria-label="Consigne audit">
       <div class="panel-head">
         <div>
@@ -68,7 +38,96 @@
           Tours max
           <input id="maxRoundsInput" type="number" min="1" max="10" step="1" inputmode="numeric">
         </label>
+        <label class="synth-field" title="IA chargee de rediger la synthese finale. Auto = premiere disponible dans l'ordre Claude, Codex, Gemini, Mistral. Si l'IA choisie est indisponible, une autre prend le relais.">
+          Synthese par
+          <select id="consensusAgentSelect">
+            <option value="auto">Auto (recommande)</option>
+            <option value="claude">Claude</option>
+            <option value="codex">Codex</option>
+            <option value="gemini">Gemini</option>
+            <option value="mistral">Mistral</option>
+          </select>
+        </label>
         <span id="loopHint" class="loop-hint"></span>
+      </div>
+    </section>
+
+    <section class="table-stage" aria-label="Table ronde des IA">
+      <div class="panel-head">
+        <div>
+          <p class="eyebrow">Discussion</p>
+          <h2>Autour de la table</h2>
+        </div>
+        <span class="loop-hint" id="tableHint">Clique sur une IA pour lire son avis complet.</span>
+      </div>
+
+      <div class="table-felt">
+        <div class="table-center">
+          <p class="eyebrow">Consensus</p>
+          <div class="center-round" id="centerRound">Tour --/--</div>
+          <div class="center-state" id="centerState">En attente</div>
+          <div class="center-actions">
+            <button id="viewConsensusBtn" type="button" disabled>Voir le consensus</button>
+            <button id="copyConsensusBtn" type="button">Copier pour Claude Cowork</button>
+          </div>
+          <span id="copyConsensusFeedback" class="copy-feedback"></span>
+        </div>
+
+        <button class="seat seat--claude" data-seat="claude" type="button" aria-label="Voir l'avis de Claude">
+          <span class="seat-bubble" data-seat-bubble="claude">En attente…</span>
+          <span class="seat-card">
+            <span class="seat-avatar">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><g fill="#d97757"><rect x="11" y="2" width="2" height="20" rx="1"/><rect x="11" y="2" width="2" height="20" rx="1" transform="rotate(60 12 12)"/><rect x="11" y="2" width="2" height="20" rx="1" transform="rotate(120 12 12)"/></g></svg>
+            </span>
+            <span class="seat-meta">
+              <span class="seat-name">Claude</span>
+              <span class="seat-role">Architecture &amp; qualite</span>
+              <span class="seat-status" data-seat-status="claude"></span>
+            </span>
+          </span>
+        </button>
+
+        <button class="seat seat--codex" data-seat="codex" type="button" aria-label="Voir l'avis de Codex">
+          <span class="seat-bubble" data-seat-bubble="codex">En attente…</span>
+          <span class="seat-card">
+            <span class="seat-avatar">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><g fill="none" stroke="#e6ebf2" stroke-width="1.6"><ellipse cx="12" cy="8.4" rx="3" ry="5.4"/><ellipse cx="12" cy="8.4" rx="3" ry="5.4" transform="rotate(60 12 12)"/><ellipse cx="12" cy="8.4" rx="3" ry="5.4" transform="rotate(120 12 12)"/><ellipse cx="12" cy="8.4" rx="3" ry="5.4" transform="rotate(180 12 12)"/><ellipse cx="12" cy="8.4" rx="3" ry="5.4" transform="rotate(240 12 12)"/><ellipse cx="12" cy="8.4" rx="3" ry="5.4" transform="rotate(300 12 12)"/></g></svg>
+            </span>
+            <span class="seat-meta">
+              <span class="seat-name">Codex</span>
+              <span class="seat-role">Qualite developpeur</span>
+              <span class="seat-status" data-seat-status="codex"></span>
+            </span>
+          </span>
+        </button>
+
+        <button class="seat seat--gemini" data-seat="gemini" type="button" aria-label="Voir l'avis de Gemini">
+          <span class="seat-bubble" data-seat-bubble="gemini">En attente…</span>
+          <span class="seat-card">
+            <span class="seat-avatar">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="#4285f4" d="M12 2c.5 5 4.9 9.4 10 10-5.1.6-9.5 5-10 10-.5-5-4.9-9.4-10-10C7.1 11.4 11.5 7 12 2Z"/></svg>
+            </span>
+            <span class="seat-meta">
+              <span class="seat-name">Gemini</span>
+              <span class="seat-role">Securite &amp; UX</span>
+              <span class="seat-status" data-seat-status="gemini"></span>
+            </span>
+          </span>
+        </button>
+
+        <button class="seat seat--mistral" data-seat="mistral" type="button" aria-label="Voir l'avis de Mistral">
+          <span class="seat-bubble" data-seat-bubble="mistral">En attente…</span>
+          <span class="seat-card">
+            <span class="seat-avatar">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><g><rect x="3" y="4.5" width="5" height="5" fill="#ffd233"/><rect x="9.5" y="4.5" width="5" height="5" fill="#ffd233"/><rect x="16" y="4.5" width="5" height="5" fill="#ffd233"/><rect x="3" y="10.5" width="5" height="5" fill="#ff8205"/><rect x="9.5" y="10.5" width="5" height="5" fill="#ff8205"/><rect x="16" y="10.5" width="5" height="5" fill="#ff8205"/><rect x="3" y="16.5" width="5" height="5" fill="#fa3a0f"/><rect x="9.5" y="16.5" width="5" height="5" fill="#fa3a0f"/><rect x="16" y="16.5" width="5" height="5" fill="#fa3a0f"/></g></svg>
+            </span>
+            <span class="seat-meta">
+              <span class="seat-name">Mistral</span>
+              <span class="seat-role">Vue d'ensemble</span>
+              <span class="seat-status" data-seat-status="mistral"></span>
+            </span>
+          </span>
+        </button>
       </div>
     </section>
 
@@ -83,64 +142,35 @@
       <div id="roundsList" class="rounds-list"></div>
     </section>
 
-    <section class="results-grid" aria-label="Resultats IA">
-      <article class="result-card" data-result="claude">
-        <div class="result-head">
+    <section class="setup-grid" aria-label="Configuration">
+      <section class="setup-panel project-panel">
+        <div class="panel-head">
           <div>
-            <p class="eyebrow">Claude</p>
-            <h2>Architecture et qualite</h2>
+            <p class="eyebrow">Projet</p>
+            <h2>Dossier a auditer</h2>
           </div>
-          <span class="result-status" data-result-status="claude"></span>
+          <button id="browseBtn" type="button">Parcourir</button>
         </div>
-        <pre id="claudeResult"></pre>
-      </article>
+        <div class="path-row">
+          <input id="projectPath" type="text" autocomplete="off" aria-label="Dossier projet">
+        </div>
+        <input id="branchName" type="hidden" autocomplete="off">
+      </section>
 
-      <article class="result-card" data-result="codex">
-        <div class="result-head">
+      <section class="setup-panel agents-panel collapsed" id="agentsPanel">
+        <div class="panel-head">
           <div>
-            <p class="eyebrow">Codex</p>
-            <h2>Qualite developpeur</h2>
+            <p class="eyebrow">Agents</p>
+            <h2>IA &amp; connexion</h2>
           </div>
-          <span class="result-status" data-result-status="codex"></span>
-        </div>
-        <pre id="codexResult"></pre>
-      </article>
-
-      <article class="result-card" data-result="gemini">
-        <div class="result-head">
-          <div>
-            <p class="eyebrow">Gemini</p>
-            <h2>Securite et UX</h2>
-          </div>
-          <span class="result-status" data-result-status="gemini"></span>
-        </div>
-        <pre id="geminiResult"></pre>
-      </article>
-
-      <article class="result-card" data-result="mistral">
-        <div class="result-head">
-          <div>
-            <p class="eyebrow">Mistral</p>
-            <h2>Vue d'ensemble</h2>
-          </div>
-          <span class="result-status" data-result-status="mistral"></span>
-        </div>
-        <pre id="mistralResult"></pre>
-      </article>
-
-      <article class="result-card consensus-card full-row" data-result="consensus">
-        <div class="result-head">
-          <div>
-            <p class="eyebrow">Synthese</p>
-            <h2>Consensus final</h2>
-          </div>
-          <div class="consensus-actions">
-            <button id="copyConsensusBtn" type="button">Copier pour Claude Cowork</button>
-            <span id="copyConsensusFeedback" class="copy-feedback"></span>
+          <div class="agents-head-actions">
+            <button id="openOnboardingBtn" type="button">Connecter les IA</button>
+            <button id="toggleAgentsBtn" type="button" aria-expanded="false">Afficher</button>
+            <span class="read-only-pill">Lecture seule</span>
           </div>
         </div>
-        <pre id="consensusResult"></pre>
-      </article>
+        <div id="agentCards" class="agent-cards"></div>
+      </section>
     </section>
 
     <section class="console-panel" aria-label="Console">
@@ -173,6 +203,17 @@
         <button id="finishOnboardingBtn" type="button" class="primary" disabled>Continuer</button>
       </div>
     </div>
+  </dialog>
+
+  <dialog id="seatDialog" class="seat-dialog">
+    <div class="seat-dialog-head">
+      <div>
+        <p class="eyebrow" id="seatDialogEyebrow">Avis</p>
+        <h2 id="seatDialogTitle">—</h2>
+      </div>
+      <button id="closeSeatBtn" type="button">Fermer</button>
+    </div>
+    <pre id="seatDialogBody"></pre>
   </dialog>
 
   <dialog id="folderDialog" class="folder-dialog">

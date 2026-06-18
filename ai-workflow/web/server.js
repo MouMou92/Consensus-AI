@@ -206,6 +206,10 @@ function defaultConfig() {
     // true = Mistral ne participe pas aux tours de debat (economie de quota),
     // mais reste utilise pour la synthese finale via pickConsensusAgent.
     mistralSynthesisOnly: true,
+    // IA chargee de la synthese finale. "auto" = premiere dispo dans l'ordre
+    // prefere (Claude, Codex, Gemini, puis Mistral en dernier). Sinon un id
+    // d'agent : claude | codex | gemini | mistral.
+    consensusAgent: "auto",
     agents: {
       claude: {
         label: "Claude Code",
@@ -827,7 +831,9 @@ async function pickConsensusAgent(config) {
     }
   }
 
-  const preferred = ["mistral", "claude", "codex", "gemini"];
+  // Ordre "auto" : privilegier les IA les plus repandues (CLI) ; Mistral en
+  // dernier car beaucoup d'utilisateurs n'ont pas de cle API.
+  const preferred = ["claude", "codex", "gemini", "mistral"];
   for (const id of preferred) {
     const agent = config.agents[id];
     if (!agent || agent.enabled === false) continue;
@@ -1113,6 +1119,12 @@ async function apiSettings(req, res) {
     throw new Error("Target project path must be a folder.");
   }
 
+  // Choix de l'agent de synthese : "auto" ou un id connu, sinon on garde l'actuel.
+  const allowedConsensus = ["auto", "claude", "codex", "gemini", "mistral"];
+  const consensusAgent = Object.prototype.hasOwnProperty.call(body, "consensusAgent")
+    ? (allowedConsensus.includes(String(body.consensusAgent)) ? String(body.consensusAgent) : "auto")
+    : (config.consensusAgent || "auto");
+
   const nextConfig = {
     ...config,
     targetProjectPath: resolvedTarget,
@@ -1120,7 +1132,8 @@ async function apiSettings(req, res) {
     agents: sanitizeAgents(body.agents || config.agents),
     // Borne le nombre de tours entre 1 et 10 (garde-fou : temps/tokens).
     maxRounds: Math.min(10, Math.max(1, Number(body.maxRounds || config.maxRounds || 5) || 5)),
-    minAgents: Number(body.minAgents || config.minAgents || 2)
+    minAgents: Number(body.minAgents || config.minAgents || 2),
+    consensusAgent
   };
   await writeConfig(nextConfig);
 
