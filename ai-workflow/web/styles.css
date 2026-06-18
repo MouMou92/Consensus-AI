@@ -257,6 +257,22 @@ textarea { resize: vertical; min-height: 96px; padding: 12px; line-height: 1.45;
 .audit-actions .primary { min-width: 240px; }
 .loop-hint { color: var(--muted); font-size: 13px; }
 
+.rounds-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.rounds-field input {
+  width: 64px;
+  min-height: 38px;
+  text-align: center;
+  font-weight: 700;
+}
+
 .iterations-panel { display: grid; gap: 12px; }
 .round-counter {
   font-weight: 750;

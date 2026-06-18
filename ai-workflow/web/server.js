@@ -1118,7 +1118,8 @@ async function apiSettings(req, res) {
     targetProjectPath: resolvedTarget,
     branchName,
     agents: sanitizeAgents(body.agents || config.agents),
-    maxRounds: Number(body.maxRounds || config.maxRounds || 5),
+    // Borne le nombre de tours entre 1 et 10 (garde-fou : temps/tokens).
+    maxRounds: Math.min(10, Math.max(1, Number(body.maxRounds || config.maxRounds || 5) || 5)),
     minAgents: Number(body.minAgents || config.minAgents || 2)
   };
   await writeConfig(nextConfig);

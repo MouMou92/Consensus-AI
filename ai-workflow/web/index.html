@@ -64,6 +64,10 @@
       <div class="audit-actions">
         <button type="button" class="primary" id="startLoopBtn">Lancer la boucle</button>
         <button data-action="stop-loop" type="button" class="danger" id="stopLoopBtn">Stopper la boucle</button>
+        <label class="rounds-field" title="Nombre maximum de tours d'echange avant le verdict final (la boucle s'arrete avant si toutes les IA sont d'accord).">
+          Tours max
+          <input id="maxRoundsInput" type="number" min="1" max="10" step="1" inputmode="numeric">
+        </label>
         <span id="loopHint" class="loop-hint"></span>
       </div>
     </section>

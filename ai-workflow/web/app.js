@@ -22,6 +22,7 @@ const stopLoopBtn = document.getElementById("stopLoopBtn");
 const modeAuditBtn = document.getElementById("modeAuditBtn");
 const modeChatBtn = document.getElementById("modeChatBtn");
 const briefTitle = document.getElementById("briefTitle");
+const maxRoundsInput = document.getElementById("maxRoundsInput");
 
 let currentMode = "audit";
 
@@ -48,6 +49,19 @@ if (modeChatBtn) modeChatBtn.addEventListener("click", () => setMode("chat"));
 if (startLoopBtn) {
   startLoopBtn.addEventListener("click", () => {
     runAction("start-loop", { mode: currentMode }).catch(showError);
+  });
+}
+
+if (maxRoundsInput) {
+  maxRoundsInput.addEventListener("change", async () => {
+    try {
+      await saveSettings();
+      // refleter la valeur bornee (1-10) renvoyee par le serveur
+      maxRoundsInput.value = (state && state.config && state.config.maxRounds) || 5;
+      renderIterations();
+    } catch (e) {
+      showError(e);
+    }
   });
 }
 
@@ -286,6 +300,9 @@ function renderIterations() {
 function renderState() {
   projectPath.value = state.config.targetProjectPath || "";
   branchName.value = state.config.branchName || "ai/project-loop";
+  if (maxRoundsInput && document.activeElement !== maxRoundsInput) {
+    maxRoundsInput.value = state.config.maxRounds || 5;
+  }
   if (document.activeElement !== instructionBox) {
     instructionBox.value = state.userInstructions || "";
   }
@@ -318,7 +335,8 @@ async function saveSettings() {
     body: JSON.stringify({
       targetProjectPath: projectPath.value,
       branchName: branchName.value,
-      userInstructions: instructionBox.value
+      userInstructions: instructionBox.value,
+      maxRounds: maxRoundsInput ? Number(maxRoundsInput.value) : undefined
     })
   });
   const result = await response.json();
