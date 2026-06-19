@@ -6,6 +6,7 @@
   "maxRounds": 5,
   "minAgents": 2,
   "mistralSynthesisOnly": true,
+  "consensusAgent": "auto",
   "agents": {
     "claude": {
       "label": "Claude Code",
@@ -26,24 +27,26 @@
       "command": "codex",
       "args": [
         "exec",
+        "-c",
+        "model_reasoning_effort=\"medium\"",
         "--skip-git-repo-check"
       ],
       "stdinMode": true,
-      "timeoutMs": 120000,
+      "timeoutMs": 300000,
       "enabled": true
     },
     "gemini": {
-      "label": "Gemini CLI",
-      "role": "Audit securite, performance et UX",
+      "label": "Antigravity",
+      "role": "Audit securite, performance et UX (Google Antigravity)",
       "type": "cli-headless",
-      "command": "gemini",
+      "command": "agy",
       "args": [
-        "--skip-trust",
-        "-y",
-        "-p",
-        "Suis l'integralite des instructions ci-dessus et reponds en francais."
+        "--dangerously-skip-permissions",
+        "-p"
       ],
-      "stdinMode": true,
+      "promptMode": "arg",
+      "captureMode": "file",
+      "stdinMode": false,
       "timeoutMs": 300000,
       "enabled": true
     },

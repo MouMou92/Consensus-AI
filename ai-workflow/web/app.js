@@ -81,7 +81,7 @@ if (consensusAgentSelect) {
 const SEAT_META = {
   claude: { name: "Claude", role: "Architecture & qualite" },
   codex: { name: "Codex", role: "Qualite developpeur" },
-  gemini: { name: "Gemini", role: "Securite & UX" },
+  gemini: { name: "Antigravity", role: "Securite & UX" },
   mistral: { name: "Mistral", role: "Vue d'ensemble" }
 };
 
@@ -89,7 +89,7 @@ const SEAT_META = {
 const AGENT_LOGOS = {
   claude: '<svg viewBox="0 0 24 24" aria-hidden="true"><g fill="#d97757"><rect x="11" y="2" width="2" height="20" rx="1"/><rect x="11" y="2" width="2" height="20" rx="1" transform="rotate(60 12 12)"/><rect x="11" y="2" width="2" height="20" rx="1" transform="rotate(120 12 12)"/></g></svg>',
   codex: '<svg viewBox="0 0 24 24" aria-hidden="true"><g fill="none" stroke="#e6ebf2" stroke-width="1.6"><ellipse cx="12" cy="8.4" rx="3" ry="5.4"/><ellipse cx="12" cy="8.4" rx="3" ry="5.4" transform="rotate(60 12 12)"/><ellipse cx="12" cy="8.4" rx="3" ry="5.4" transform="rotate(120 12 12)"/><ellipse cx="12" cy="8.4" rx="3" ry="5.4" transform="rotate(180 12 12)"/><ellipse cx="12" cy="8.4" rx="3" ry="5.4" transform="rotate(240 12 12)"/><ellipse cx="12" cy="8.4" rx="3" ry="5.4" transform="rotate(300 12 12)"/></g></svg>',
-  gemini: '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="#4285f4" d="M12 2c.5 5 4.9 9.4 10 10-5.1.6-9.5 5-10 10-.5-5-4.9-9.4-10-10C7.1 11.4 11.5 7 12 2Z"/></svg>',
+  gemini: '<svg viewBox="0 0 24 24" aria-hidden="true"><g fill="none" stroke="#34a0ff" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"><path d="M12 3.5 18.5 16h-13z"/><path d="M8.5 19.5h7"/></g></svg>',
   mistral: '<svg viewBox="0 0 24 24" aria-hidden="true"><g><rect x="3" y="4.5" width="5" height="5" fill="#ffd233"/><rect x="9.5" y="4.5" width="5" height="5" fill="#ffd233"/><rect x="16" y="4.5" width="5" height="5" fill="#ffd233"/><rect x="3" y="10.5" width="5" height="5" fill="#ff8205"/><rect x="9.5" y="10.5" width="5" height="5" fill="#ff8205"/><rect x="16" y="10.5" width="5" height="5" fill="#ff8205"/><rect x="3" y="16.5" width="5" height="5" fill="#fa3a0f"/><rect x="9.5" y="16.5" width="5" height="5" fill="#fa3a0f"/><rect x="16" y="16.5" width="5" height="5" fill="#fa3a0f"/></g></svg>'
 };
 function agentLogoSvg(id) { return AGENT_LOGOS[id] || ""; }
@@ -362,7 +362,10 @@ function renderIterations() {
         const badge = document.createElement("span");
         const status = info ? info.status : "PENDING";
         badge.className = `round-badge round-badge--${status}`;
-        badge.textContent = `${agentId}: ${status}`;
+        const agentLabel = (state.config.agents[agentId] && state.config.agents[agentId].label)
+          || (SEAT_META[agentId] && SEAT_META[agentId].name)
+          || agentId;
+        badge.textContent = `${agentLabel}: ${status}`;
         if (info && info.error) {
           badge.title = info.error;
         }

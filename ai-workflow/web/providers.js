@@ -4,6 +4,7 @@ const { spawn, exec: execChildProcess } = require("child_process");
 const https = require("https");
 const fs = require("fs");
 const path = require("path");
+const os = require("os");
 
 function killProcessTree(pid) {
   if (!pid) return;
@@ -56,6 +57,28 @@ function saveEnv(envPath, vars) {
   fs.writeFileSync(envPath, lines.join("\n") + (lines.length ? "\n" : ""), "utf8");
 }
 
+// Dossiers d'install courants des CLI agentiques quand le PATH n'est pas (encore)
+// configure. Permet de retrouver `agy` (Antigravity), `gemini`, etc. meme si
+// l'utilisateur n'a pas fait l'etape PATH de l'installeur.
+function extraCommandDirs() {
+  if (!isWindows) {
+    const home = process.env.HOME || "";
+    return [home && path.join(home, ".local", "bin")].filter(Boolean);
+  }
+  const LA = process.env.LOCALAPPDATA || "";
+  const UP = process.env.USERPROFILE || "";
+  return [
+    LA && path.join(LA, "agy", "bin"),
+    LA && path.join(LA, "Antigravity"),
+    LA && path.join(LA, "Antigravity", "bin"),
+    LA && path.join(LA, "Antigravity", "staging"),
+    LA && path.join(LA, "Programs", "Antigravity"),
+    UP && path.join(UP, ".antigravity", "bin"),
+    UP && path.join(UP, ".local", "bin"),
+    LA && path.join(LA, "Microsoft", "WinGet", "Links")
+  ].filter(Boolean);
+}
+
 function resolveCommandPath(command) {
   if (!command) {
     return null;
@@ -65,7 +88,11 @@ function resolveCommandPath(command) {
   }
   const extensions = isWindows ? [".cmd", ".exe", ".ps1", ".bat", ""] : [""];
   const separator = isWindows ? ";" : ":";
-  for (const folder of String(process.env.PATH || "").split(separator)) {
+  const searchDirs = [
+    ...String(process.env.PATH || "").split(separator),
+    ...extraCommandDirs()
+  ];
+  for (const folder of searchDirs) {
     if (!folder) {
       continue;
     }
@@ -97,6 +124,72 @@ function callCliHeadless(agent, prompt, options = {}) {
 
     const baseArgs = Array.isArray(agent.args) ? [...agent.args] : [];
     const timeoutMs = Number(agent.timeoutMs || 300000);
+
+    // Mode de transmission du prompt :
+    //  - "stdin" (defaut) : le prompt est ecrit sur stdin (claude, codex, gemini).
+    //  - "arg"            : le prompt est passe en ARGUMENT (Antigravity `agy`,
+    //                       dont `-p`/`--print` EXIGE une valeur et ne lit pas stdin).
+    // Mode de CAPTURE de la reponse :
+    //  - "stdout" (defaut) : on lit la reponse sur la sortie standard.
+    //  - "file"            : on demande a l'agent d'ECRIRE sa reponse dans un
+    //                        fichier qu'on relit ensuite. Contourne le bug
+    //                        "stdout vide en non-TTY" de agy sur Windows.
+    const promptMode = agent.promptMode === "arg" ? "arg" : "stdin";
+    const captureMode = agent.captureMode === "file" ? "file" : "stdout";
+    let tempDirToClean = null;
+    let outputFilePath = null;
+    const ensureTempDir = () => {
+      if (!tempDirToClean) {
+        tempDirToClean = fs.mkdtempSync(path.join(os.tmpdir(), "consensus-agy-"));
+      }
+      return tempDirToClean;
+    };
+
+    let effectivePrompt = prompt;
+
+    // Capture par fichier : prepare le fichier de reponse + ajoute la consigne
+    // d'ecriture a la fin du prompt.
+    if (captureMode === "file") {
+      try {
+        const dir = ensureTempDir();
+        outputFilePath = path.join(dir, "answer.md");
+        fs.writeFileSync(outputFilePath, "", "utf8");
+        effectivePrompt = `${prompt}\n\n## SORTIE OBLIGATOIRE (mode automatise)\nTa sortie console est IGNOREE par l'outil appelant. Ecris ta reponse COMPLETE et finale (y compris le marqueur de fin STATUT) en UTF-8 dans CE fichier exact, en ecrasant tout contenu existant, et n'ecris AUCUN autre fichier :\n${outputFilePath}\nN'affiche rien d'autre.`;
+      } catch (error) {
+        resolve({ ok: false, output: "", error: `Preparation du fichier de sortie impossible : ${error.message}` });
+        return;
+      }
+    }
+
+    // Transmission du prompt.
+    if (promptMode === "arg") {
+      const promptBytes = Buffer.byteLength(effectivePrompt, "utf8");
+      // Marge sous la limite de ligne de commande Windows (~32767 caracteres).
+      const argSafeLimit = isWindows ? 28000 : 120000;
+      if (promptBytes <= argSafeLimit) {
+        baseArgs.push(effectivePrompt);
+      } else {
+        // Prompt trop volumineux (ex. audit avec gros scan) : on l'ecrit dans le
+        // dossier temporaire et on le fait lire via la syntaxe @fichier.
+        try {
+          const dir = ensureTempDir();
+          const promptFilePath = path.join(dir, "prompt.md");
+          fs.writeFileSync(promptFilePath, effectivePrompt, "utf8");
+          baseArgs.unshift("--add-dir", dir);
+          baseArgs.push(`Lis INTEGRALEMENT le fichier @${promptFilePath} puis suis EXACTEMENT ses instructions.`);
+        } catch (error) {
+          resolve({ ok: false, output: "", error: `Prompt trop volumineux pour la ligne de commande et fallback fichier impossible : ${error.message}` });
+          return;
+        }
+      }
+    }
+
+    // Capture fichier : le dossier temp doit etre dans le workspace de l'agent
+    // pour qu'il puisse y ecrire (si pas deja ajoute par le fallback ci-dessus).
+    if (captureMode === "file" && tempDirToClean && !baseArgs.includes("--add-dir")) {
+      baseArgs.unshift("--add-dir", tempDirToClean);
+    }
+
     const isCmdShim = isWindows && /\.(cmd|bat)$/i.test(resolved);
     const isPs1 = isWindows && /\.ps1$/i.test(resolved);
 
@@ -120,12 +213,19 @@ function callCliHeadless(agent, prompt, options = {}) {
       spawnArgs = baseArgs;
     }
 
+    // Env transmis a la CLI : process.env (qui contient deja les cles chargees
+    // depuis .env au demarrage du serveur) + cles specifiques de l'agent
+    // (agent.env) + override eventuel par appel (options.env). C'est par ce biais
+    // que GEMINI_API_KEY / ANTIGRAVITY_API_KEY arrivent jusqu'a `agy` / `gemini`.
+    const childEnv = { ...process.env, ...(agent.env || {}), ...(options.env || {}) };
+
     let child;
     try {
       child = spawn(spawnCommand, spawnArgs, {
         cwd: options.cwd || process.cwd(),
         windowsHide: true,
         windowsVerbatimArguments: verbatim,
+        env: childEnv,
         stdio: ["pipe", "pipe", "pipe"]
       });
     } catch (error) {
@@ -149,6 +249,9 @@ function callCliHeadless(agent, prompt, options = {}) {
       clearTimeout(timer);
       if (options.signal && abortListener) {
         try { options.signal.removeEventListener("abort", abortListener); } catch {}
+      }
+      if (tempDirToClean) {
+        try { fs.rmSync(tempDirToClean, { recursive: true, force: true }); } catch {}
       }
       resolve(result);
     };
@@ -189,8 +292,18 @@ function callCliHeadless(agent, prompt, options = {}) {
     });
 
     child.on("close", code => {
-      const stdout = Buffer.concat(stdoutChunks).toString("utf8");
+      let stdout = Buffer.concat(stdoutChunks).toString("utf8");
       const stderr = Buffer.concat(stderrChunks).toString("utf8");
+      // Capture fichier : la vraie reponse est dans le fichier ecrit par l'agent,
+      // pas sur stdout (qui peut etre vide a cause du bug non-TTY de agy).
+      if (captureMode === "file" && outputFilePath) {
+        try {
+          const fileOut = fs.readFileSync(outputFilePath, "utf8");
+          if (fileOut && fileOut.trim()) {
+            stdout = fileOut;
+          }
+        } catch {}
+      }
       if (aborted) {
         finish({ ok: false, output: stdout, error: "Interrompu par l'utilisateur." });
         return;
@@ -211,12 +324,14 @@ function callCliHeadless(agent, prompt, options = {}) {
     });
 
     try {
-      if (agent.stdinMode !== false) {
+      if (promptMode === "stdin" && agent.stdinMode !== false) {
         child.stdin.on("error", () => {
           // some CLIs close stdin early
         });
-        child.stdin.end(prompt, "utf8");
+        child.stdin.end(effectivePrompt, "utf8");
       } else {
+        // Mode "arg" (ou stdin desactive) : on ferme stdin vide, le prompt est
+        // deja passe en argument.
         child.stdin.end();
       }
     } catch (error) {
@@ -452,8 +567,18 @@ async function testAgent(agent, options = {}) {
     "Reponds uniquement par: OK",
     { cwd: options.cwd, signal: options.signal }
   );
-  if (res.ok) {
+  if (res.ok && res.output && res.output.trim()) {
     return { ok: true, state: "ready", detail: "Installee et connectee." };
+  }
+  if (res.ok) {
+    // Exit 0 mais stdout vide : typiquement le bug "non-TTY stdout drop" de
+    // Antigravity (agy) quand il est lance par un process (pipe) plutot que par
+    // un vrai terminal. La CLI marche en interactif mais ne rend rien en headless.
+    return {
+      ok: false,
+      state: "error",
+      detail: "La CLI repond mais ne renvoie aucune sortie (exit 0, stdout vide). Connu avec Antigravity (agy) en headless sur Windows. Plan B : basculer ce siege sur 'gemini' + une cle GEMINI_API_KEY dans .env."
+    };
   }
   const state = classifyCliError(res.error);
   const detail = state === "needs_login"

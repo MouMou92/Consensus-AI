@@ -38,13 +38,13 @@
           Tours max
           <input id="maxRoundsInput" type="number" min="1" max="10" step="1" inputmode="numeric">
         </label>
-        <label class="synth-field" title="IA chargee de rediger la synthese finale. Auto = premiere disponible dans l'ordre Claude, Codex, Gemini, Mistral. Si l'IA choisie est indisponible, une autre prend le relais.">
+        <label class="synth-field" title="IA chargee de rediger la synthese finale. Auto = premiere disponible dans l'ordre Claude, Codex, Antigravity, Mistral. Si l'IA choisie echoue (erreur ou sortie vide), une autre prend le relais selon cet ordre.">
           Synthese par
           <select id="consensusAgentSelect">
             <option value="auto">Auto (recommande)</option>
             <option value="claude">Claude</option>
             <option value="codex">Codex</option>
-            <option value="gemini">Gemini</option>
+            <option value="gemini">Antigravity</option>
             <option value="mistral">Mistral</option>
           </select>
         </label>
@@ -101,14 +101,14 @@
           </span>
         </button>
 
-        <button class="seat seat--gemini" data-seat="gemini" type="button" aria-label="Voir l'avis de Gemini">
+        <button class="seat seat--gemini" data-seat="gemini" type="button" aria-label="Voir l'avis d'Antigravity">
           <span class="seat-bubble" data-seat-bubble="gemini">En attente…</span>
           <span class="seat-card">
             <span class="seat-avatar">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="#4285f4" d="M12 2c.5 5 4.9 9.4 10 10-5.1.6-9.5 5-10 10-.5-5-4.9-9.4-10-10C7.1 11.4 11.5 7 12 2Z"/></svg>
+              <svg viewBox="0 0 24 24" aria-hidden="true"><g fill="none" stroke="#34a0ff" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"><path d="M12 3.5 18.5 16h-13z"/><path d="M8.5 19.5h7"/></g></svg>
             </span>
             <span class="seat-meta">
-              <span class="seat-name">Gemini</span>
+              <span class="seat-name">Antigravity</span>
               <span class="seat-role">Securite &amp; UX</span>
               <span class="seat-status" data-seat-status="gemini"></span>
             </span>

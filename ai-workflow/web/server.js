@@ -46,11 +46,13 @@ const AGENT_SETUP = {
     loginNote: "Lance `codex login` et connecte ton compte ChatGPT/OpenAI.",
     docUrl: "https://github.com/openai/codex"
   },
+  // Siege "Google" : Antigravity (binaire `agy`), remplacant de la Gemini CLI
+  // depuis le retrait du tier gratuit OAuth (18/06/2026).
   gemini: {
-    installCmd: "npm install -g @google/gemini-cli",
-    loginCmd: "gemini",
-    loginNote: "Lance `gemini` une fois pour faire l'authentification Google (OAuth).",
-    docUrl: "https://github.com/google-gemini/gemini-cli"
+    installCmd: "irm https://antigravity.google/cli/install.ps1 | iex",
+    loginCmd: "agy",
+    loginNote: "Lance `agy` une fois pour te connecter (OAuth Google, cache dans le Gestionnaire d'identifiants Windows). En headless / sans navigateur : ajoute GEMINI_API_KEY ou ANTIGRAVITY_API_KEY dans ai-workflow/.env.",
+    docUrl: "https://antigravity.google/docs"
   },
   mistral: {
     keyNote: "Cree une cle API (offre gratuite possible) sur la console Mistral, puis colle-la ci-dessus.",
@@ -204,7 +206,7 @@ function defaultConfig() {
     maxRounds: 5,
     minAgents: 2,
     // true = Mistral ne participe pas aux tours de debat (economie de quota),
-    // mais reste utilise pour la synthese finale via pickConsensusAgent.
+    // mais reste utilise pour la synthese finale via orderedConsensusCandidates.
     mistralSynthesisOnly: true,
     // IA chargee de la synthese finale. "auto" = premiere dispo dans l'ordre
     // prefere (Claude, Codex, Gemini, puis Mistral en dernier). Sinon un id
@@ -226,18 +228,32 @@ function defaultConfig() {
         role: "Qualite developpeur et maintenabilite",
         type: "cli-headless",
         command: "codex",
-        args: ["exec"],
+        // model_reasoning_effort="medium" : le profil utilisateur peut etre en
+        // "xhigh" (tres lent -> timeouts). medium = bon compromis pour un debat.
+        args: ["exec", "-c", "model_reasoning_effort=\"medium\"", "--skip-git-repo-check"],
         stdinMode: true,
         timeoutMs: 300000,
         enabled: true
       },
+      // Slot "gemini" : depuis le retrait du tier gratuit OAuth de la Gemini CLI
+      // (18/06/2026), ce siege fait tourner Antigravity (binaire `agy`), le
+      // remplacant officiel de Google. L'id interne reste "gemini" pour ne pas
+      // casser la table ronde a 4 sieges ni les fichiers de tours existants.
+      // Plan B si agy ne rend rien en headless : remettre command "gemini" et
+      // ajouter une cle GEMINI_API_KEY dans ai-workflow/.env.
       gemini: {
-        label: "Gemini CLI",
-        role: "Audit securite, performance et UX",
+        label: "Antigravity",
+        role: "Audit securite, performance et UX (Google Antigravity)",
         type: "cli-headless",
-        command: "gemini",
-        args: ["-p"],
-        stdinMode: true,
+        command: "agy",
+        // `agy -p` EXIGE le prompt en argument (il ne lit pas stdin) ->
+        // promptMode "arg". --dangerously-skip-permissions evite les blocages de
+        // permission en headless (et autorise le fallback fichier @ pour les gros
+        // prompts d'audit).
+        args: ["--dangerously-skip-permissions", "-p"],
+        promptMode: "arg",
+        captureMode: "file",
+        stdinMode: false,
         timeoutMs: 300000,
         enabled: true
       },
@@ -297,6 +313,18 @@ function sanitizeAgents(agents) {
       merged.args = Array.isArray(source.args) ? source.args.map(item => String(item)) : defaults[id].args;
       merged.command = String(source.command || defaults[id].command || id).trim();
       merged.stdinMode = source.stdinMode === undefined ? defaults[id].stdinMode : Boolean(source.stdinMode);
+      const promptMode = source.promptMode === undefined ? defaults[id].promptMode : source.promptMode;
+      if (promptMode === "arg" || promptMode === "stdin") {
+        merged.promptMode = promptMode;
+      } else {
+        delete merged.promptMode;
+      }
+      const captureMode = source.captureMode === undefined ? defaults[id].captureMode : source.captureMode;
+      if (captureMode === "file" || captureMode === "stdout") {
+        merged.captureMode = captureMode;
+      } else {
+        delete merged.captureMode;
+      }
     }
     next[id] = merged;
   }
@@ -816,57 +844,76 @@ async function runOneRound(state, config, roundIndex) {
   return { allAccord, allErrored };
 }
 
-async function pickConsensusAgent(config) {
-  // Priority order: explicit consensusAgent if set, otherwise:
-  // 1. Mistral (if enabled AND key present)
-  // 2. claude > codex > gemini (CLI headless local) - chosen by enabled flag
+// Construit la liste ORDONNEE des agents candidats pour la synthese finale :
+//   1) l'agent explicitement choisi (config.consensusAgent) s'il n'est pas "auto" ;
+//   2) puis un ordre de priorite de secours, au cas ou le choix principal echoue.
+// On ne garde que les agents actives ET joignables (probe). runFinalConsensus
+// essaie ensuite chaque candidat dans l'ordre jusqu'a une VRAIE reussite (appel
+// reel renvoyant du texte), pour couvrir le cas "agent choisi a bugge".
+async function orderedConsensusCandidates(config) {
   const explicit = config.consensusAgent;
-  if (explicit && config.agents[explicit] && config.agents[explicit].enabled !== false) {
-    const agent = config.agents[explicit];
-    const probe = await providers.probeAgent(agent, {
-      apiKey: agent.provider === "mistral" ? loadMistralKey() : undefined
-    });
-    if (probe.ok) {
-      return { id: explicit, agent };
-    }
+  // Ordre de secours : CLI locales d'abord (pas de quota API), Mistral ensuite.
+  // Si un agent precis est choisi (ex. mistral), il passe en tete.
+  const fallbackOrder = ["claude", "codex", "gemini", "mistral"];
+  const ordered = [];
+  if (explicit && explicit !== "auto") {
+    ordered.push(explicit);
+  }
+  for (const id of fallbackOrder) {
+    if (!ordered.includes(id)) ordered.push(id);
   }
 
-  // Ordre "auto" : privilegier les IA les plus repandues (CLI) ; Mistral en
-  // dernier car beaucoup d'utilisateurs n'ont pas de cle API.
-  const preferred = ["claude", "codex", "gemini", "mistral"];
-  for (const id of preferred) {
+  const candidates = [];
+  for (const id of ordered) {
     const agent = config.agents[id];
     if (!agent || agent.enabled === false) continue;
     const probe = await providers.probeAgent(agent, {
       apiKey: agent.provider === "mistral" ? loadMistralKey() : undefined
     });
     if (probe.ok) {
-      return { id, agent };
+      candidates.push({ id, agent });
     }
   }
-  return null;
+  return candidates;
 }
 
 async function runFinalConsensus(state, config) {
-  const picked = await pickConsensusAgent(config);
-  if (!picked) {
+  const candidates = await orderedConsensusCandidates(config);
+  if (!candidates.length) {
     const fallback = await composeFinalPrompt(state, config);
     await fsp.writeFile(finalPath, `# Consensus brut (aucun agent disponible)\n\nAucune IA n'est disponible pour generer le consensus final.\nLe prompt ci-dessous peut etre execute manuellement :\n\n\`\`\`\n${fallback}\n\`\`\`\n`, "utf8");
     return { ok: false, reason: "Aucun agent disponible pour la synthese." };
   }
 
   const prompt = await composeFinalPrompt(state, config);
-  const result = await providers.callAgent(picked.agent, prompt, {
-    cwd: path.resolve(config.targetProjectPath || projectRoot),
-    apiKey: picked.agent.provider === "mistral" ? loadMistralKey() : undefined
-  });
-  if (!result.ok) {
-    await fsp.writeFile(finalPath, `# Consensus - echec de generation (${picked.id})\n\n\`\`\`text\n${result.error || "erreur inconnue"}\n\`\`\`\n`, "utf8");
-    return { ok: false, reason: `${picked.id} a echoue: ${result.error || "erreur inconnue"}` };
+  const failed = [];
+
+  // On tente chaque candidat dans l'ordre de priorite ; le premier qui renvoie
+  // une vraie sortie gagne. Si le synthetiseur choisi a bugge (erreur OU sortie
+  // vide facon "non-TTY drop" de agy), on bascule automatiquement sur le suivant.
+  for (const picked of candidates) {
+    const result = await providers.callAgent(picked.agent, prompt, {
+      cwd: path.resolve(config.targetProjectPath || projectRoot),
+      apiKey: picked.agent.provider === "mistral" ? loadMistralKey() : undefined
+    });
+
+    if (result.ok && result.output && result.output.trim()) {
+      const fallbackNote = failed.length
+        ? `\n<!-- Bascule auto apres echec de : ${failed.map(f => f.id).join(", ")} -->`
+        : "";
+      const header = `<!-- Consensus genere par : ${picked.id} -->${fallbackNote}\n\n`;
+      await fsp.writeFile(finalPath, header + result.output.trim() + "\n", "utf8");
+      return { ok: true, agent: picked.id, fallbackFrom: failed.map(f => f.id) };
+    }
+
+    failed.push({ id: picked.id, error: (result.error || "sortie vide").slice(0, 300) });
   }
-  const header = `<!-- Consensus genere par : ${picked.id} -->\n\n`;
-  await fsp.writeFile(finalPath, header + result.output.trim() + "\n", "utf8");
-  return { ok: true, agent: picked.id };
+
+  // Tous les candidats ont echoue : on conserve le prompt pour execution manuelle.
+  const detail = failed.map(f => `- ${f.id} : ${f.error}`).join("\n");
+  const fallback = await composeFinalPrompt(state, config);
+  await fsp.writeFile(finalPath, `# Consensus - echec de generation\n\nTous les agents de synthese essayes ont echoue :\n\n${detail}\n\nLe prompt ci-dessous peut etre execute manuellement :\n\n\`\`\`\n${fallback}\n\`\`\`\n`, "utf8");
+  return { ok: false, reason: `Tous les synthetiseurs ont echoue (${failed.map(f => f.id).join(", ")}).` };
 }
 
 async function runLoop(options = {}) {
@@ -894,7 +941,7 @@ async function runLoop(options = {}) {
     }
 
     // Pacing quota : par defaut Mistral ne debat pas a chaque tour, il ne sert
-    // qu'a la synthese finale (pickConsensusAgent le re-sonde independamment).
+    // qu'a la synthese finale (orderedConsensusCandidates le re-sonde a part).
     const synthesisOnly = config.mistralSynthesisOnly !== false;
     const roundAgents = synthesisOnly
       ? reachableAgents.filter(id => id !== "mistral")
@@ -1213,7 +1260,7 @@ ${cleanFinal || "(Aucun consensus genere.)"}
 
 ---
 
-*Genere depuis Consensus IA - cockpit local multi-IA en boucle. Outil developpe pour faire dialoguer Claude Code, Codex, Gemini CLI et Mistral, en lecture seule sur un projet ou en discussion conceptuelle, jusqu'a convergence ou plafond de tours.*
+*Genere depuis Consensus IA - cockpit local multi-IA en boucle. Outil developpe pour faire dialoguer Claude Code, Codex, Antigravity et Mistral, en lecture seule sur un projet ou en discussion conceptuelle, jusqu'a convergence ou plafond de tours.*
 `;
 }
 
@@ -1445,4 +1492,5 @@ const server = http.createServer(async (req, res) => {
 server.listen(port, "127.0.0.1", () => {
   console.log(`Consensus IA web interface running at http://localhost:${port}`);
   console.log(`Project root: ${projectRoot}`);
+  console.log("Sieges du panel : Claude, Codex, Antigravity (agy), Mistral.");
 });
